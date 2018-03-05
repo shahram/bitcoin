@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2016 The Bitcoin Core developers
+// Copyright (c) 2009-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -104,7 +104,7 @@ enum
     //
     SCRIPT_VERIFY_MINIMALIF = (1U << 13),
 
-    // Signature(s) must be empty vector if an CHECK(MULTI)SIG operation failed
+    // Signature(s) must be empty vector if a CHECK(MULTI)SIG operation failed
     //
     SCRIPT_VERIFY_NULLFAIL = (1U << 14),
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2016 The Bitcoin Core developers
+// Copyright (c) 2009-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -173,6 +173,13 @@ bool TruncateFile(FILE *file, unsigned int length);
 int RaiseFileDescriptorLimit(int nMinFD);
 void AllocateFileRange(FILE *file, unsigned int offset, unsigned int length);
 bool RenameOver(fs::path src, fs::path dest);
+bool LockDirectory(const fs::path& directory, const std::string lockfile_name, bool probe_only=false);
+
+/** Release all directory locks. This is used for unit testing only, at runtime
+ * the global destructor will take care of the locks.
+ */
+void ReleaseDirectoryLocks();
+
 bool TryCreateDirectories(const fs::path& p);
 fs::path GetDefaultDataDir();
 const fs::path &GetDataDir(bool fNetSpecific = true);
@@ -189,6 +196,16 @@ fs::path GetDebugLogPath();
 bool OpenDebugLog();
 void ShrinkDebugFile();
 void runCommand(const std::string& strCommand);
+
+/**
+ * Most paths passed as configuration arguments are treated as relative to
+ * the datadir if they are not absolute.
+ *
+ * @param path The path to be conditionally prefixed with datadir.
+ * @param net_specific Forwarded to GetDataDir().
+ * @return The normalized path.
+ */
+fs::path AbsPathForConfigVal(const fs::path& path, bool net_specific = true);
 
 inline bool IsSwitchChar(char c)
 {

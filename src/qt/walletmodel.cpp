@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2016 The Bitcoin Core developers
+// Copyright (c) 2011-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -42,6 +42,7 @@ WalletModel::WalletModel(const PlatformStyle *platformStyle, CWallet *_wallet, O
     transactionTableModel(0),
     recentRequestsTableModel(0),
     cachedBalance(0), cachedUnconfirmedBalance(0), cachedImmatureBalance(0),
+    cachedWatchOnlyBalance{0}, cachedWatchUnconfBalance{0}, cachedWatchImmatureBalance{0},
     cachedEncryptionStatus(Unencrypted),
     cachedNumBlocks(0)
 {
@@ -695,7 +696,7 @@ bool WalletModel::bumpFee(uint256 hash)
     questionString.append("</td></tr></table>");
     SendConfirmationDialog confirmationDialog(tr("Confirm fee bump"), questionString);
     confirmationDialog.exec();
-    QMessageBox::StandardButton retval = (QMessageBox::StandardButton)confirmationDialog.result();
+    QMessageBox::StandardButton retval = static_cast<QMessageBox::StandardButton>(confirmationDialog.result());
 
     // cancel sign&broadcast if users doesn't want to bump the fee
     if (retval != QMessageBox::Yes) {
@@ -731,6 +732,11 @@ bool WalletModel::isWalletEnabled()
 bool WalletModel::hdEnabled() const
 {
     return wallet->IsHDEnabled();
+}
+
+OutputType WalletModel::getDefaultAddressType() const
+{
+    return g_address_type;
 }
 
 int WalletModel::getDefaultConfirmTarget() const

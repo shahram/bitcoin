@@ -1,5 +1,5 @@
 // Copyright (c) 2009-2010 Satoshi Nakamoto
-// Copyright (c) 2009-2016 The Bitcoin Core developers
+// Copyright (c) 2009-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -8,6 +8,16 @@
 
 #if defined(HAVE_CONFIG_H)
 #include <config/bitcoin-config.h>
+#endif
+
+#include <type_traits>
+
+// GCC 4.8 is missing some C++11 type_traits,
+// https://www.gnu.org/software/gcc/gcc-5/changes.html
+#if defined(__GNUC__) && __GNUC__ < 5
+#define IS_TRIVIALLY_CONSTRUCTIBLE std::is_trivial
+#else
+#define IS_TRIVIALLY_CONSTRUCTIBLE std::is_trivially_constructible
 #endif
 
 #ifdef WIN32
@@ -33,7 +43,7 @@
 #include <ws2tcpip.h>
 #include <stdint.h>
 #else
-#include <sys/fcntl.h>
+#include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/select.h>
 #include <sys/socket.h>

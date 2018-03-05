@@ -5,6 +5,7 @@
 
 #include <wallet/init.h>
 
+#include <chainparams.h>
 #include <net.h>
 #include <util.h>
 #include <utilmoneystr.h>
@@ -16,13 +17,15 @@
 std::string GetWalletHelpString(bool showDebug)
 {
     std::string strUsage = HelpMessageGroup(_("Wallet options:"));
+    strUsage += HelpMessageOpt("-addresstype", strprintf("What type of addresses to use (\"legacy\", \"p2sh-segwit\", or \"bech32\", default: \"%s\")", FormatOutputType(OUTPUT_TYPE_DEFAULT)));
+    strUsage += HelpMessageOpt("-changetype", "What type of change to use (\"legacy\", \"p2sh-segwit\", or \"bech32\"). Default is same as -addresstype, except when -addresstype=p2sh-segwit a native segwit output is used when sending to a native segwit address)");
     strUsage += HelpMessageOpt("-disablewallet", _("Do not load the wallet and disable wallet RPC calls"));
-    strUsage += HelpMessageOpt("-keypool=<n>", strprintf(_("Set key pool size to <n> (default: %u)"), DEFAULT_KEYPOOL_SIZE));
-    strUsage += HelpMessageOpt("-fallbackfee=<amt>", strprintf(_("A fee rate (in %s/kB) that will be used when fee estimation has insufficient data (default: %s)"),
-                                                               CURRENCY_UNIT, FormatMoney(DEFAULT_FALLBACK_FEE)));
     strUsage += HelpMessageOpt("-discardfee=<amt>", strprintf(_("The fee rate (in %s/kB) that indicates your tolerance for discarding change by adding it to the fee (default: %s). "
                                                                 "Note: An output is discarded if it is dust at this rate, but we will always discard up to the dust relay fee and a discard fee above that is limited by the fee estimate for the longest target"),
                                                               CURRENCY_UNIT, FormatMoney(DEFAULT_DISCARD_FEE)));
+    strUsage += HelpMessageOpt("-fallbackfee=<amt>", strprintf(_("A fee rate (in %s/kB) that will be used when fee estimation has insufficient data (default: %s)"),
+                                                               CURRENCY_UNIT, FormatMoney(DEFAULT_FALLBACK_FEE)));
+    strUsage += HelpMessageOpt("-keypool=<n>", strprintf(_("Set key pool size to <n> (default: %u)"), DEFAULT_KEYPOOL_SIZE));
     strUsage += HelpMessageOpt("-mintxfee=<amt>", strprintf(_("Fees (in %s/kB) smaller than this are considered zero fee for transaction creation (default: %s)"),
                                                             CURRENCY_UNIT, FormatMoney(DEFAULT_TRANSACTION_MINFEE)));
     strUsage += HelpMessageOpt("-paytxfee=<amt>", strprintf(_("Fee (in %s/kB) to add to transactions you send (default: %s)"),
@@ -31,12 +34,12 @@ std::string GetWalletHelpString(bool showDebug)
     strUsage += HelpMessageOpt("-salvagewallet", _("Attempt to recover private keys from a corrupt wallet on startup"));
     strUsage += HelpMessageOpt("-spendzeroconfchange", strprintf(_("Spend unconfirmed change when sending transactions (default: %u)"), DEFAULT_SPEND_ZEROCONF_CHANGE));
     strUsage += HelpMessageOpt("-txconfirmtarget=<n>", strprintf(_("If paytxfee is not set, include enough fee so transactions begin confirmation on average within n blocks (default: %u)"), DEFAULT_TX_CONFIRM_TARGET));
-    strUsage += HelpMessageOpt("-walletrbf", strprintf(_("Send transactions with full-RBF opt-in enabled (RPC only, default: %u)"), DEFAULT_WALLET_RBF));
     strUsage += HelpMessageOpt("-upgradewallet", _("Upgrade wallet to latest format on startup"));
     strUsage += HelpMessageOpt("-wallet=<file>", _("Specify wallet file (within data directory)") + " " + strprintf(_("(default: %s)"), DEFAULT_WALLET_DAT));
     strUsage += HelpMessageOpt("-walletbroadcast", _("Make the wallet broadcast transactions") + " " + strprintf(_("(default: %u)"), DEFAULT_WALLETBROADCAST));
     strUsage += HelpMessageOpt("-walletdir=<dir>", _("Specify directory to hold wallets (default: <datadir>/wallets if it exists, otherwise <datadir>)"));
     strUsage += HelpMessageOpt("-walletnotify=<cmd>", _("Execute command when a wallet transaction changes (%s in cmd is replaced by TxID)"));
+    strUsage += HelpMessageOpt("-walletrbf", strprintf(_("Send transactions with full-RBF opt-in enabled (RPC only, default: %u)"), DEFAULT_WALLET_RBF));
     strUsage += HelpMessageOpt("-zapwallettxes=<mode>", _("Delete all wallet transactions and only recover those parts of the blockchain through -rescan on startup") +
                                " " + _("(1 = keep tx meta data e.g. account owner and payment request information, 2 = drop tx meta data)"));
 
@@ -121,6 +124,8 @@ bool WalletParameterInteraction()
                         _("This is the minimum transaction fee you pay on every transaction."));
         CWallet::minTxFee = CFeeRate(n);
     }
+
+    g_wallet_allow_fallback_fee = Params().IsFallbackFeeEnabled();
     if (gArgs.IsArgSet("-fallbackfee"))
     {
         CAmount nFeePerK = 0;
@@ -130,6 +135,7 @@ bool WalletParameterInteraction()
             InitWarning(AmountHighWarn("-fallbackfee") + " " +
                         _("This is the transaction fee you may pay when fee estimates are not available."));
         CWallet::fallbackFee = CFeeRate(nFeePerK);
+        g_wallet_allow_fallback_fee = nFeePerK != 0; //disable fallback fee in case value was set to 0, enable if non-null value
     }
     if (gArgs.IsArgSet("-discardfee"))
     {
@@ -175,6 +181,18 @@ bool WalletParameterInteraction()
     bSpendZeroConfChange = gArgs.GetBoolArg("-spendzeroconfchange", DEFAULT_SPEND_ZEROCONF_CHANGE);
     fWalletRbf = gArgs.GetBoolArg("-walletrbf", DEFAULT_WALLET_RBF);
 
+    g_address_type = ParseOutputType(gArgs.GetArg("-addresstype", ""));
+    if (g_address_type == OUTPUT_TYPE_NONE) {
+        return InitError(strprintf("Unknown address type '%s'", gArgs.GetArg("-addresstype", "")));
+    }
+
+    // If changetype is set in config file or parameter, check that it's valid.
+    // Default to OUTPUT_TYPE_NONE if not set.
+    g_change_type = ParseOutputType(gArgs.GetArg("-changetype", ""), OUTPUT_TYPE_NONE);
+    if (g_change_type == OUTPUT_TYPE_NONE && !gArgs.GetArg("-changetype", "").empty()) {
+        return InitError(strprintf("Unknown change type '%s'", gArgs.GetArg("-changetype", "")));
+    }
+
     return true;
 }
 
@@ -193,11 +211,15 @@ bool VerifyWallets()
         return true;
     }
 
-    if (gArgs.IsArgSet("-walletdir") && !fs::is_directory(GetWalletDir())) {
-        if (fs::exists(fs::system_complete(gArgs.GetArg("-walletdir", "")))) {
-            return InitError(strprintf(_("Specified -walletdir \"%s\" is not a directory"), gArgs.GetArg("-walletdir", "").c_str()));
+    if (gArgs.IsArgSet("-walletdir")) {
+        fs::path wallet_dir = gArgs.GetArg("-walletdir", "");
+        if (!fs::exists(wallet_dir)) {
+            return InitError(strprintf(_("Specified -walletdir \"%s\" does not exist"), wallet_dir.string()));
+        } else if (!fs::is_directory(wallet_dir)) {
+            return InitError(strprintf(_("Specified -walletdir \"%s\" is not a directory"), wallet_dir.string()));
+        } else if (!wallet_dir.is_absolute()) {
+            return InitError(strprintf(_("Specified -walletdir \"%s\" is a relative path"), wallet_dir.string()));
         }
-        return InitError(strprintf(_("Specified -walletdir \"%s\" does not exist"), gArgs.GetArg("-walletdir", "").c_str()));
     }
 
     LogPrintf("Using wallet directory %s\n", GetWalletDir().string());

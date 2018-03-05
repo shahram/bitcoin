@@ -1,5 +1,5 @@
 // Copyright (c) 2010 Satoshi Nakamoto
-// Copyright (c) 2009-2016 The Bitcoin Core developers
+// Copyright (c) 2009-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -94,6 +94,9 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "decoderawtransaction", 1, "iswitness" },
     { "signrawtransaction", 1, "prevtxs" },
     { "signrawtransaction", 2, "privkeys" },
+    { "signrawtransactionwithkey", 1, "privkeys" },
+    { "signrawtransactionwithkey", 2, "prevtxs" },
+    { "signrawtransactionwithwallet", 1, "prevtxs" },
     { "sendrawtransaction", 1, "allowhighfees" },
     { "combinerawtransaction", 0, "txs" },
     { "fundrawtransaction", 1, "options" },
@@ -114,7 +117,6 @@ static const CRPCConvertParam vRPCConvertParams[] =
     { "pruneblockchain", 0, "height" },
     { "keypoolrefill", 0, "newsize" },
     { "getrawmempool", 0, "verbose" },
-    { "estimatefee", 0, "nblocks" },
     { "estimatesmartfee", 0, "conf_target" },
     { "estimaterawfee", 0, "conf_target" },
     { "estimaterawfee", 1, "threshold" },
@@ -213,7 +215,7 @@ UniValue RPCConvertNamedValues(const std::string &strMethod, const std::vector<s
     UniValue params(UniValue::VOBJ);
 
     for (const std::string &s: strParams) {
-        size_t pos = s.find("=");
+        size_t pos = s.find('=');
         if (pos == std::string::npos) {
             throw(std::runtime_error("No '=' in named argument '"+s+"', this needs to be present for every argument (even if it is empty)"));
         }

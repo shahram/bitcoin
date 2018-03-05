@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2016 The Bitcoin Core developers
+// Copyright (c) 2011-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -38,7 +38,7 @@ SplashScreen::SplashScreen(Qt::WindowFlags f, const NetworkStyle *networkStyle) 
     float fontFactor            = 1.0;
     float devicePixelRatio      = 1.0;
 #if QT_VERSION > 0x050100
-    devicePixelRatio = ((QGuiApplication*)QCoreApplication::instance())->devicePixelRatio();
+    devicePixelRatio = static_cast<QGuiApplication*>(QCoreApplication::instance())->devicePixelRatio();
 #endif
 
     // define text to place

@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2016 The Bitcoin Core developers
+// Copyright (c) 2011-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -315,7 +315,12 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
             break;
         case MapPortUPnP: // core option - can be changed on-the-fly
             settings.setValue("fUseUPnP", value.toBool());
-            MapPort(value.toBool());
+            if (value.toBool()) {
+                StartMapPort();
+            } else {
+                InterruptMapPort();
+                StopMapPort();
+            }
             break;
         case MinimizeOnClose:
             fMinimizeOnClose = value.toBool();

@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2016 The Bitcoin Core developers
+// Copyright (c) 2011-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -138,9 +138,9 @@ size_t ClientModel::getMempoolDynamicUsage() const
 double ClientModel::getVerificationProgress(const CBlockIndex *tipIn) const
 {
     CBlockIndex *tip = const_cast<CBlockIndex *>(tipIn);
+    LOCK(cs_main);
     if (!tip)
     {
-        LOCK(cs_main);
         tip = chainActive.Tip();
     }
     return GuessVerificationProgress(Params().TxData(), tip);

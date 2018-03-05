@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2016 The Bitcoin Core developers
+// Copyright (c) 2011-2017 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -101,7 +101,7 @@ QFont fixedPitchFont()
 #endif
 }
 
-// Just some dummy data to generate an convincing random-looking (but consistent) address
+// Just some dummy data to generate a convincing random-looking (but consistent) address
 static const uint8_t dummydata[] = {0xeb,0x15,0x23,0x1d,0xfc,0xeb,0x60,0x92,0x58,0x86,0xb6,0x7d,0x06,0x52,0x99,0x92,0x59,0x15,0xae,0xb1,0x72,0xc0,0x66,0x47};
 
 // Generate a dummy address with invalid CRC, starting with the network prefix.
@@ -417,7 +417,7 @@ void openDebugLogfile()
 
 bool openBitcoinConf()
 {
-    boost::filesystem::path pathConfig = GetConfigFile(BITCOIN_CONF_FILENAME);
+    boost::filesystem::path pathConfig = GetConfigFile(gArgs.GetArg("-conf", BITCOIN_CONF_FILENAME));
 
     /* Create the file */
     boost::filesystem::ofstream configFile(pathConfig, std::ios_base::app);
@@ -993,6 +993,18 @@ QString formatBytes(uint64_t bytes)
         return QString(QObject::tr("%1 MB")).arg(bytes / 1024 / 1024);
 
     return QString(QObject::tr("%1 GB")).arg(bytes / 1024 / 1024 / 1024);
+}
+
+qreal calculateIdealFontSize(int width, const QString& text, QFont font, qreal minPointSize, qreal font_size) {
+    while(font_size >= minPointSize) {
+        font.setPointSizeF(font_size);
+        QFontMetrics fm(font);
+        if (fm.width(text) < width) {
+            break;
+        }
+        font_size -= 0.5;
+    }
+    return font_size;
 }
 
 void ClickableLabel::mouseReleaseEvent(QMouseEvent *event)

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# Copyright (c) 2014-2016 The Bitcoin Core developers
+# Copyright (c) 2014-2017 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Base class for RPC testing."""
@@ -62,6 +62,7 @@ class BitcoinTestFramework():
         self.setup_clean_chain = False
         self.nodes = []
         self.mocktime = 0
+        self.supports_cli = False
         self.set_test_params()
 
         assert hasattr(self, "num_nodes"), "Test must set self.num_nodes in set_test_params()"
@@ -91,12 +92,16 @@ class BitcoinTestFramework():
                           help="Location of the test framework config file")
         parser.add_option("--pdbonfailure", dest="pdbonfailure", default=False, action="store_true",
                           help="Attach a python debugger if test fails")
+        parser.add_option("--usecli", dest="usecli", default=False, action="store_true",
+                          help="use bitcoin-cli instead of RPC for all commands")
         self.add_options(parser)
         (self.options, self.args) = parser.parse_args()
 
         PortSeed.n = self.options.port_seed
 
-        os.environ['PATH'] = self.options.srcdir + ":" + self.options.srcdir + "/qt:" + os.environ['PATH']
+        os.environ['PATH'] = self.options.srcdir + os.pathsep + \
+                             self.options.srcdir + os.path.sep + "qt" + os.pathsep + \
+                             os.environ['PATH']
 
         check_json_precision()
 
@@ -113,6 +118,8 @@ class BitcoinTestFramework():
         success = TestStatus.FAILED
 
         try:
+            if self.options.usecli and not self.supports_cli:
+                raise SkipTest("--usecli specified but test does not support using CLI")
             self.setup_chain()
             self.setup_network()
             self.run_test()
@@ -143,10 +150,11 @@ class BitcoinTestFramework():
             self.log.info("Note: bitcoinds were not stopped and may still be running")
 
         if not self.options.nocleanup and not self.options.noshutdown and success != TestStatus.FAILED:
-            self.log.info("Cleaning up")
-            shutil.rmtree(self.options.tmpdir)
+            self.log.info("Cleaning up {} on exit".format(self.options.tmpdir))
+            cleanup_tree_on_exit = True
         else:
             self.log.warning("Not cleaning up dir %s" % self.options.tmpdir)
+            cleanup_tree_on_exit = False
 
         if success == TestStatus.PASSED:
             self.log.info("Tests successful")
@@ -159,6 +167,8 @@ class BitcoinTestFramework():
             self.log.error("Hint: Call {} '{}' to consolidate all logs".format(os.path.normpath(os.path.dirname(os.path.realpath(__file__)) + "/../combine_logs.py"), self.options.tmpdir))
             exit_code = TEST_EXIT_FAILED
         logging.shutdown()
+        if cleanup_tree_on_exit:
+            shutil.rmtree(self.options.tmpdir)
         sys.exit(exit_code)
 
     # Methods to override in subclass test scripts.
@@ -213,20 +223,20 @@ class BitcoinTestFramework():
         assert_equal(len(extra_args), num_nodes)
         assert_equal(len(binary), num_nodes)
         for i in range(num_nodes):
-            self.nodes.append(TestNode(i, self.options.tmpdir, extra_args[i], rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir))
+            self.nodes.append(TestNode(i, self.options.tmpdir, extra_args[i], rpchost, timewait=timewait, binary=binary[i], stderr=None, mocktime=self.mocktime, coverage_dir=self.options.coveragedir, use_cli=self.options.usecli))
 
-    def start_node(self, i, extra_args=None, stderr=None):
+    def start_node(self, i, *args, **kwargs):
         """Start a bitcoind"""
 
         node = self.nodes[i]
 
-        node.start(extra_args, stderr)
+        node.start(*args, **kwargs)
         node.wait_for_rpc_connection()
 
         if self.options.coveragedir is not None:
             coverage.write_all_rpc_commands(self.options.coveragedir, node.rpc)
 
-    def start_nodes(self, extra_args=None):
+    def start_nodes(self, extra_args=None, *args, **kwargs):
         """Start multiple bitcoinds"""
 
         if extra_args is None:
@@ -234,7 +244,7 @@ class BitcoinTestFramework():
         assert_equal(len(extra_args), self.num_nodes)
         try:
             for i, node in enumerate(self.nodes):
-                node.start(extra_args[i])
+                node.start(extra_args[i], *args, **kwargs)
             for node in self.nodes:
                 node.wait_for_rpc_connection()
         except:
@@ -266,10 +276,10 @@ class BitcoinTestFramework():
         self.stop_node(i)
         self.start_node(i, extra_args)
 
-    def assert_start_raises_init_error(self, i, extra_args=None, expected_msg=None):
+    def assert_start_raises_init_error(self, i, extra_args=None, expected_msg=None, *args, **kwargs):
         with tempfile.SpooledTemporaryFile(max_size=2**16) as log_stderr:
             try:
-                self.start_node(i, extra_args, stderr=log_stderr)
+                self.start_node(i, extra_args, stderr=log_stderr, *args, **kwargs)
                 self.stop_node(i)
             except Exception as e:
                 assert 'bitcoind exited' in str(e)  # node must have shutdown
@@ -382,7 +392,7 @@ class BitcoinTestFramework():
             # Create cache directories, run bitcoinds:
             for i in range(MAX_NODES):
                 datadir = initialize_datadir(self.options.cachedir, i)
-                args = [os.getenv("BITCOIND", "bitcoind"), "-server", "-keypool=1", "-datadir=" + datadir, "-discover=0"]
+                args = [os.getenv("BITCOIND", "bitcoind"), "-datadir=" + datadir]
                 if i > 0:
                     args.append("-connect=127.0.0.1:" + str(p2p_port(0)))
                 self.nodes.append(TestNode(i, self.options.cachedir, extra_args=[], rpchost=None, timewait=None, binary=None, stderr=None, mocktime=self.mocktime, coverage_dir=None))
