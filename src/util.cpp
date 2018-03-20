@@ -4,7 +4,6 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <util.h>
-#include <fs.h>
 
 #include <chainparamsbase.h>
 #include <random.h>
@@ -79,6 +78,7 @@
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include <openssl/conf.h>
+#include <thread>
 
 // Application startup time (used for uptime calculation)
 const int64_t nStartupTime = GetTime();
@@ -314,12 +314,14 @@ static std::string LogTimestampStr(const std::string &str, std::atomic_bool *fSt
 
     if (*fStartedNewLine) {
         int64_t nTimeMicros = GetTimeMicros();
-        strStamped = DateTimeStrFormat("%Y-%m-%d %H:%M:%S", nTimeMicros/1000000);
-        if (fLogTimeMicros)
-            strStamped += strprintf(".%06d", nTimeMicros%1000000);
+        strStamped = FormatISO8601DateTime(nTimeMicros/1000000);
+        if (fLogTimeMicros) {
+            strStamped.pop_back();
+            strStamped += strprintf(".%06dZ", nTimeMicros%1000000);
+        }
         int64_t mocktime = GetMockTime();
         if (mocktime) {
-            strStamped += " (mocktime: " + DateTimeStrFormat("%Y-%m-%d %H:%M:%S", mocktime) + ")";
+            strStamped += " (mocktime: " + FormatISO8601DateTime(mocktime) + ")";
         }
         strStamped += ' ' + str;
     } else
@@ -927,11 +929,7 @@ bool SetupNetworking()
 
 int GetNumCores()
 {
-#if BOOST_VERSION >= 105600
-    return boost::thread::physical_concurrency();
-#else // Must fall back to hardware_concurrency, which unfortunately counts virtual cores
-    return boost::thread::hardware_concurrency();
-#endif
+    return std::thread::hardware_concurrency();
 }
 
 std::string CopyrightHolders(const std::string& strPrefix)
