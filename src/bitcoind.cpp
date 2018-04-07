@@ -18,9 +18,6 @@
 #include <httpserver.h>
 #include <httprpc.h>
 #include <utilstrencodings.h>
-#if ENABLE_WALLET
-#include <wallet/init.h>
-#endif
 #include <walletinitinterface.h>
 
 #include <boost/thread.hpp>
@@ -63,12 +60,6 @@ bool AppInit(int argc, char* argv[])
 {
     bool fRet = false;
 
-#if ENABLE_WALLET
-    g_wallet_init_interface.reset(new WalletInit);
-#else
-    g_wallet_init_interface.reset(new DummyWalletInit);
-#endif
-
     //
     // Parameters
     //
@@ -76,8 +67,7 @@ bool AppInit(int argc, char* argv[])
     gArgs.ParseParameters(argc, argv);
 
     // Process help and version before taking care about datadir
-    if (gArgs.IsArgSet("-?") || gArgs.IsArgSet("-h") ||  gArgs.IsArgSet("-help") || gArgs.IsArgSet("-version"))
-    {
+    if (HelpRequested(gArgs) || gArgs.IsArgSet("-version")) {
         std::string strUsage = strprintf(_("%s Daemon"), _(PACKAGE_NAME)) + " " + _("version") + " " + FormatFullVersion() + "\n";
 
         if (gArgs.IsArgSet("-version"))
