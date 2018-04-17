@@ -47,7 +47,6 @@
 #include <walletinitinterface.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <memory>
 
 #ifndef WIN32
 #include <signal.h>
@@ -81,7 +80,7 @@ public:
     bool ParameterInteraction() override {return true;}
     void RegisterRPC(CRPCTable &) override {}
     bool Verify() override {return true;}
-    bool Open() override {return true;}
+    bool Open() override {LogPrintf("No wallet support compiled in!\n"); return true;}
     void Start(CScheduler& scheduler) override {}
     void Flush() override {}
     void Stop() override {}
@@ -324,7 +323,7 @@ void OnRPCStopped()
 {
     uiInterface.NotifyBlockTip.disconnect(&RPCNotifyBlockChange);
     RPCNotifyBlockChange(false, nullptr);
-    cvBlockChange.notify_all();
+    g_best_block_cv.notify_all();
     LogPrint(BCLog::RPC, "RPC stopped.\n");
 }
 
@@ -632,6 +631,7 @@ void ThreadImport(std::vector<fs::path> vImportFiles)
 {
     const CChainParams& chainparams = Params();
     RenameThread("bitcoin-loadblk");
+    ScheduleBatchPriority();
 
     {
     CImportingNow imp;
@@ -803,6 +803,11 @@ void InitParameterInteraction()
         if (gArgs.SoftSetBoolArg("-whitelistrelay", true))
             LogPrintf("%s: parameter interaction: -whitelistforcerelay=1 -> setting -whitelistrelay=1\n", __func__);
     }
+
+    // Warn if network-specific options (-addnode, -connect, etc) are
+    // specified in default section of config file, but not overridden
+    // on the command line or in this network's section of the config file.
+    gArgs.WarnForSectionOnlyArgs();
 }
 
 static std::string ResolveErrMsg(const char * const optname, const std::string& strBind)
@@ -1232,7 +1237,7 @@ bool AppInitMain()
 
     // Warn about relative -datadir path.
     if (gArgs.IsArgSet("-datadir") && !fs::path(gArgs.GetArg("-datadir", "")).is_absolute()) {
-        LogPrintf("Warning: relative datadir option '%s' specified, which will be interpreted relative to the "
+        LogPrintf("Warning: relative datadir option '%s' specified, which will be interpreted relative to the " /* Continued */
                   "current working directory '%s'. This is fragile, because if bitcoin is started in the future "
                   "from a different location, it will be unable to locate the current data files. There could "
                   "also be data loss if bitcoin is started while in a temporary directory.\n",

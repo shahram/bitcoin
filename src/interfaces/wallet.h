@@ -2,8 +2,8 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#ifndef BITCOIN_INTERFACE_WALLET_H
-#define BITCOIN_INTERFACE_WALLET_H
+#ifndef BITCOIN_INTERFACES_WALLET_H
+#define BITCOIN_INTERFACES_WALLET_H
 
 #include <amount.h>                    // For CAmount
 #include <pubkey.h>                    // For CTxDestination (CKeyID and CScriptID)
@@ -27,7 +27,7 @@ class CWallet;
 enum class OutputType;
 struct CRecipient;
 
-namespace interface {
+namespace interfaces {
 
 class Handler;
 class PendingWalletTx;
@@ -64,6 +64,9 @@ public:
     //! Change wallet passphrase.
     virtual bool changeWalletPassphrase(const SecureString& old_wallet_passphrase,
         const SecureString& new_wallet_passphrase) = 0;
+
+    //! Abort a rescan.
+    virtual void abortRescan() = 0;
 
     //! Back up wallet.
     virtual bool backupWallet(const std::string& filename) = 0;
@@ -347,6 +350,6 @@ struct WalletTxOut
 //! in builds where ENABLE_WALLET is false.
 std::unique_ptr<Wallet> MakeWallet(CWallet& wallet);
 
-} // namespace interface
+} // namespace interfaces
 
-#endif // BITCOIN_INTERFACE_WALLET_H
+#endif // BITCOIN_INTERFACES_WALLET_H
