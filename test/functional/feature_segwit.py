@@ -16,7 +16,7 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import *
 from test_framework.mininode import sha256, CTransaction, CTxIn, COutPoint, CTxOut, COIN, ToHex, FromHex
 from test_framework.address import script_to_p2sh, key_to_p2pkh
-from test_framework.script import CScript, OP_HASH160, OP_CHECKSIG, OP_0, hash160, OP_EQUAL, OP_DUP, OP_EQUALVERIFY, OP_1, OP_2, OP_CHECKMULTISIG, OP_TRUE
+from test_framework.script import CScript, OP_HASH160, OP_CHECKSIG, OP_0, hash160, OP_EQUAL, OP_DUP, OP_EQUALVERIFY, OP_1, OP_2, OP_CHECKMULTISIG, OP_TRUE, OP_DROP
 from io import BytesIO
 
 NODE_0 = 0
@@ -150,19 +150,11 @@ class SegWitTest(BitcoinTestFramework):
         self.skip_mine(self.nodes[2], p2sh_ids[NODE_2][WIT_V0][0], True) #block 426
         self.skip_mine(self.nodes[2], p2sh_ids[NODE_2][WIT_V1][0], True) #block 427
 
-        # TODO: An old node would see these txs without witnesses and be able to mine them
-
-        self.log.info("Verify unsigned bare witness txs in versionbits-setting blocks are valid before the fork")
-        self.success_mine(self.nodes[2], wit_ids[NODE_2][WIT_V0][1], False) #block 428
-        self.success_mine(self.nodes[2], wit_ids[NODE_2][WIT_V1][1], False) #block 429
-
         self.log.info("Verify unsigned p2sh witness txs without a redeem script are invalid")
         self.fail_accept(self.nodes[2], "mandatory-script-verify-flag", p2sh_ids[NODE_2][WIT_V0][1], False)
         self.fail_accept(self.nodes[2], "mandatory-script-verify-flag", p2sh_ids[NODE_2][WIT_V1][1], False)
 
-        self.log.info("Verify unsigned p2sh witness txs with a redeem script in versionbits-settings blocks are valid before the fork")
-        self.success_mine(self.nodes[2], p2sh_ids[NODE_2][WIT_V0][1], False, witness_script(False, self.pubkey[2])) #block 430
-        self.success_mine(self.nodes[2], p2sh_ids[NODE_2][WIT_V1][1], False, witness_script(True, self.pubkey[2])) #block 431
+        self.nodes[2].generate(4) # blocks 428-431
 
         self.log.info("Verify previous witness txs skipped for mining can now be mined")
         assert_equal(len(self.nodes[2].getrawmempool()), 4)
@@ -220,7 +212,7 @@ class SegWitTest(BitcoinTestFramework):
         # Now create tx2, which will spend from txid1.
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(int(txid1, 16), 0), b''))
-        tx.vout.append(CTxOut(int(49.99*COIN), CScript([OP_TRUE])))
+        tx.vout.append(CTxOut(int(49.99 * COIN), CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])))
         tx2_hex = self.nodes[0].signrawtransactionwithwallet(ToHex(tx))['hex']
         txid2 = self.nodes[0].sendrawtransaction(tx2_hex)
         tx = FromHex(CTransaction(), tx2_hex)
@@ -229,7 +221,7 @@ class SegWitTest(BitcoinTestFramework):
         # Now create tx3, which will spend from txid2
         tx = CTransaction()
         tx.vin.append(CTxIn(COutPoint(int(txid2, 16), 0), b""))
-        tx.vout.append(CTxOut(int(49.95*COIN), CScript([OP_TRUE]))) # Huge fee
+        tx.vout.append(CTxOut(int(49.95 * COIN), CScript([OP_TRUE, OP_DROP] * 15 + [OP_TRUE])))  # Huge fee
         tx.calc_sha256()
         txid3 = self.nodes[0].sendrawtransaction(ToHex(tx))
         assert(tx.wit.is_null())
@@ -311,8 +303,10 @@ class SegWitTest(BitcoinTestFramework):
             v = self.nodes[0].getaddressinfo(i)
             if (v['isscript']):
                 [bare, p2sh, p2wsh, p2sh_p2wsh] = self.p2sh_address_to_script(v)
-                # bare and p2sh multisig with compressed keys should always be spendable
-                spendable_anytime.extend([bare, p2sh])
+                # p2sh multisig with compressed keys should always be spendable
+                spendable_anytime.extend([p2sh])
+                # bare multisig can be watched and signed, but is not treated as ours
+                solvable_after_importaddress.extend([bare])
                 # P2WSH and P2SH(P2WSH) multisig with compressed keys are spendable after direct importaddress
                 spendable_after_importaddress.extend([p2wsh, p2sh_p2wsh])
             else:
@@ -328,8 +322,10 @@ class SegWitTest(BitcoinTestFramework):
             v = self.nodes[0].getaddressinfo(i)
             if (v['isscript']):
                 [bare, p2sh, p2wsh, p2sh_p2wsh] = self.p2sh_address_to_script(v)
-                # bare and p2sh multisig with uncompressed keys should always be spendable
-                spendable_anytime.extend([bare, p2sh])
+                # p2sh multisig with uncompressed keys should always be spendable
+                spendable_anytime.extend([p2sh])
+                # bare multisig can be watched and signed, but is not treated as ours
+                solvable_after_importaddress.extend([bare])
                 # P2WSH and P2SH(P2WSH) multisig with uncompressed keys are never seen
                 unseen_anytime.extend([p2wsh, p2sh_p2wsh])
             else:

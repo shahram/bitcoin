@@ -84,20 +84,10 @@ const int64_t nStartupTime = GetTime();
 
 const char * const BITCOIN_CONF_FILENAME = "bitcoin.conf";
 const char * const BITCOIN_PID_FILENAME = "bitcoind.pid";
-const char * const DEFAULT_DEBUGLOGFILE = "debug.log";
 
 ArgsManager gArgs;
-bool fPrintToConsole = false;
-bool fPrintToDebugLog = true;
 
-bool fLogTimestamps = DEFAULT_LOGTIMESTAMPS;
-bool fLogTimeMicros = DEFAULT_LOGTIMEMICROS;
-bool fLogIPs = DEFAULT_LOGIPS;
-std::atomic<bool> fReopenDebugLog(false);
 CTranslationInterface translationInterface;
-
-/** Log categories bitfield. */
-std::atomic<uint32_t> logCategories(0);
 
 /** Init OpenSSL library multithreading support */
 static std::unique_ptr<CCriticalSection[]> ppmutexOpenSSL;
@@ -146,233 +136,6 @@ public:
     }
 }
 instance_of_cinit;
-
-/**
- * LogPrintf() has been broken a couple of times now
- * by well-meaning people adding mutexes in the most straightforward way.
- * It breaks because it may be called by global destructors during shutdown.
- * Since the order of destruction of static/global objects is undefined,
- * defining a mutex as a global object doesn't work (the mutex gets
- * destroyed, and then some later destructor calls OutputDebugStringF,
- * maybe indirectly, and you get a core dump at shutdown trying to lock
- * the mutex).
- */
-
-static std::once_flag debugPrintInitFlag;
-
-/**
- * We use std::call_once() to make sure mutexDebugLog and
- * vMsgsBeforeOpenLog are initialized in a thread-safe manner.
- *
- * NOTE: fileout, mutexDebugLog and sometimes vMsgsBeforeOpenLog
- * are leaked on exit. This is ugly, but will be cleaned up by
- * the OS/libc. When the shutdown sequence is fully audited and
- * tested, explicit destruction of these objects can be implemented.
- */
-static FILE* fileout = nullptr;
-static std::mutex* mutexDebugLog = nullptr;
-static std::list<std::string>* vMsgsBeforeOpenLog;
-
-static int FileWriteStr(const std::string &str, FILE *fp)
-{
-    return fwrite(str.data(), 1, str.size(), fp);
-}
-
-static void DebugPrintInit()
-{
-    assert(mutexDebugLog == nullptr);
-    mutexDebugLog = new std::mutex();
-    vMsgsBeforeOpenLog = new std::list<std::string>;
-}
-
-fs::path GetDebugLogPath()
-{
-    fs::path logfile(gArgs.GetArg("-debuglogfile", DEFAULT_DEBUGLOGFILE));
-    return AbsPathForConfigVal(logfile);
-}
-
-bool OpenDebugLog()
-{
-    std::call_once(debugPrintInitFlag, &DebugPrintInit);
-    std::lock_guard<std::mutex> scoped_lock(*mutexDebugLog);
-
-    assert(fileout == nullptr);
-    assert(vMsgsBeforeOpenLog);
-    fs::path pathDebug = GetDebugLogPath();
-
-    fileout = fsbridge::fopen(pathDebug, "a");
-    if (!fileout) {
-        return false;
-    }
-
-    setbuf(fileout, nullptr); // unbuffered
-    // dump buffered messages from before we opened the log
-    while (!vMsgsBeforeOpenLog->empty()) {
-        FileWriteStr(vMsgsBeforeOpenLog->front(), fileout);
-        vMsgsBeforeOpenLog->pop_front();
-    }
-
-    delete vMsgsBeforeOpenLog;
-    vMsgsBeforeOpenLog = nullptr;
-    return true;
-}
-
-struct CLogCategoryDesc
-{
-    uint32_t flag;
-    std::string category;
-};
-
-const CLogCategoryDesc LogCategories[] =
-{
-    {BCLog::NONE, "0"},
-    {BCLog::NONE, "none"},
-    {BCLog::NET, "net"},
-    {BCLog::TOR, "tor"},
-    {BCLog::MEMPOOL, "mempool"},
-    {BCLog::HTTP, "http"},
-    {BCLog::BENCH, "bench"},
-    {BCLog::ZMQ, "zmq"},
-    {BCLog::DB, "db"},
-    {BCLog::RPC, "rpc"},
-    {BCLog::ESTIMATEFEE, "estimatefee"},
-    {BCLog::ADDRMAN, "addrman"},
-    {BCLog::SELECTCOINS, "selectcoins"},
-    {BCLog::REINDEX, "reindex"},
-    {BCLog::CMPCTBLOCK, "cmpctblock"},
-    {BCLog::RAND, "rand"},
-    {BCLog::PRUNE, "prune"},
-    {BCLog::PROXY, "proxy"},
-    {BCLog::MEMPOOLREJ, "mempoolrej"},
-    {BCLog::LIBEVENT, "libevent"},
-    {BCLog::COINDB, "coindb"},
-    {BCLog::QT, "qt"},
-    {BCLog::LEVELDB, "leveldb"},
-    {BCLog::ALL, "1"},
-    {BCLog::ALL, "all"},
-};
-
-bool GetLogCategory(uint32_t *f, const std::string *str)
-{
-    if (f && str) {
-        if (*str == "") {
-            *f = BCLog::ALL;
-            return true;
-        }
-        for (unsigned int i = 0; i < ARRAYLEN(LogCategories); i++) {
-            if (LogCategories[i].category == *str) {
-                *f = LogCategories[i].flag;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-std::string ListLogCategories()
-{
-    std::string ret;
-    int outcount = 0;
-    for (unsigned int i = 0; i < ARRAYLEN(LogCategories); i++) {
-        // Omit the special cases.
-        if (LogCategories[i].flag != BCLog::NONE && LogCategories[i].flag != BCLog::ALL) {
-            if (outcount != 0) ret += ", ";
-            ret += LogCategories[i].category;
-            outcount++;
-        }
-    }
-    return ret;
-}
-
-std::vector<CLogCategoryActive> ListActiveLogCategories()
-{
-    std::vector<CLogCategoryActive> ret;
-    for (unsigned int i = 0; i < ARRAYLEN(LogCategories); i++) {
-        // Omit the special cases.
-        if (LogCategories[i].flag != BCLog::NONE && LogCategories[i].flag != BCLog::ALL) {
-            CLogCategoryActive catActive;
-            catActive.category = LogCategories[i].category;
-            catActive.active = LogAcceptCategory(LogCategories[i].flag);
-            ret.push_back(catActive);
-        }
-    }
-    return ret;
-}
-
-/**
- * fStartedNewLine is a state variable held by the calling context that will
- * suppress printing of the timestamp when multiple calls are made that don't
- * end in a newline. Initialize it to true, and hold it, in the calling context.
- */
-static std::string LogTimestampStr(const std::string &str, std::atomic_bool *fStartedNewLine)
-{
-    std::string strStamped;
-
-    if (!fLogTimestamps)
-        return str;
-
-    if (*fStartedNewLine) {
-        int64_t nTimeMicros = GetTimeMicros();
-        strStamped = FormatISO8601DateTime(nTimeMicros/1000000);
-        if (fLogTimeMicros) {
-            strStamped.pop_back();
-            strStamped += strprintf(".%06dZ", nTimeMicros%1000000);
-        }
-        int64_t mocktime = GetMockTime();
-        if (mocktime) {
-            strStamped += " (mocktime: " + FormatISO8601DateTime(mocktime) + ")";
-        }
-        strStamped += ' ' + str;
-    } else
-        strStamped = str;
-
-    if (!str.empty() && str[str.size()-1] == '\n')
-        *fStartedNewLine = true;
-    else
-        *fStartedNewLine = false;
-
-    return strStamped;
-}
-
-int LogPrintStr(const std::string &str)
-{
-    int ret = 0; // Returns total number of characters written
-    static std::atomic_bool fStartedNewLine(true);
-
-    std::string strTimestamped = LogTimestampStr(str, &fStartedNewLine);
-
-    if (fPrintToConsole)
-    {
-        // print to console
-        ret = fwrite(strTimestamped.data(), 1, strTimestamped.size(), stdout);
-        fflush(stdout);
-    }
-    else if (fPrintToDebugLog)
-    {
-        std::call_once(debugPrintInitFlag, &DebugPrintInit);
-        std::lock_guard<std::mutex> scoped_lock(*mutexDebugLog);
-
-        // buffer if we haven't opened the log yet
-        if (fileout == nullptr) {
-            assert(vMsgsBeforeOpenLog);
-            ret = strTimestamped.length();
-            vMsgsBeforeOpenLog->push_back(strTimestamped);
-        }
-        else
-        {
-            // reopen the log file, if requested
-            if (fReopenDebugLog) {
-                fReopenDebugLog = false;
-                fs::path pathDebug = GetDebugLogPath();
-                if (fsbridge::freopen(pathDebug,"a",fileout) != nullptr)
-                    setbuf(fileout, nullptr); // unbuffered
-            }
-
-            ret = FileWriteStr(strTimestamped, fileout);
-        }
-    }
-    return ret;
-}
 
 /** A map that contains all the currently held directory locks. After
  * successful locking, these will be held here until the global destructor
@@ -682,6 +445,17 @@ void ArgsManager::ParseParameters(int argc, const char* const argv[])
             m_override_args[key].push_back(val);
         }
     }
+
+    // we do not allow -includeconf from command line, so we clear it here
+    auto it = m_override_args.find("-includeconf");
+    if (it != m_override_args.end()) {
+        if (it->second.size() > 0) {
+            for (const auto& ic : it->second) {
+                fprintf(stderr, "warning: -includeconf cannot be used from commandline; ignoring -includeconf=%s\n", ic.c_str());
+            }
+            m_override_args.erase(it);
+        }
+    }
 }
 
 std::vector<std::string> ArgsManager::GetArgs(const std::string& strArg) const
@@ -771,6 +545,55 @@ void ArgsManager::ForceSetArg(const std::string& strArg, const std::string& strV
 {
     LOCK(cs_args);
     m_override_args[strArg] = {strValue};
+}
+
+void ArgsManager::AddArg(const std::string& name, const std::string& help, const bool debug_only, const OptionsCategory& cat)
+{
+    std::pair<OptionsCategory, std::string> key(cat, name);
+    assert(m_available_args.count(key) == 0);
+    m_available_args.emplace(key, std::pair<std::string, bool>(help, debug_only));
+}
+
+std::string ArgsManager::GetHelpMessage()
+{
+    const bool show_debug = gArgs.GetBoolArg("-help-debug", false);
+
+    std::string usage = HelpMessageGroup(_("Options:"));
+
+    OptionsCategory last_cat = OptionsCategory::OPTIONS;
+    for (auto& arg : m_available_args) {
+        if (arg.first.first != last_cat) {
+            last_cat = arg.first.first;
+            if (last_cat == OptionsCategory::CONNECTION)
+                usage += HelpMessageGroup(_("Connection options:"));
+            else if (last_cat == OptionsCategory::ZMQ)
+                usage += HelpMessageGroup(_("ZeroMQ notification options:"));
+            else if (last_cat == OptionsCategory::DEBUG_TEST)
+                usage += HelpMessageGroup(_("Debugging/Testing options:"));
+            else if (last_cat == OptionsCategory::NODE_RELAY)
+                usage += HelpMessageGroup(_("Node relay options:"));
+            else if (last_cat == OptionsCategory::BLOCK_CREATION)
+                usage += HelpMessageGroup(_("Block creation options:"));
+            else if (last_cat == OptionsCategory::RPC)
+                usage += HelpMessageGroup(_("RPC server options:"));
+            else if (last_cat == OptionsCategory::WALLET)
+                usage += HelpMessageGroup(_("Wallet options:"));
+            else if (last_cat == OptionsCategory::WALLET_DEBUG_TEST && show_debug)
+                usage += HelpMessageGroup(_("Wallet debugging/testing options:"));
+            else if (last_cat == OptionsCategory::CHAINPARAMS)
+                usage += HelpMessageGroup(_("Chain selection options:"));
+            else if (last_cat == OptionsCategory::GUI)
+                usage += HelpMessageGroup(_("UI Options:"));
+            else if (last_cat == OptionsCategory::COMMANDS)
+                usage += HelpMessageGroup(_("Commands:"));
+            else if (last_cat == OptionsCategory::REGISTER_COMMANDS)
+                usage += HelpMessageGroup(_("Register Commands:"));
+        }
+        if (show_debug || !arg.second.second) {
+            usage += HelpMessageOpt(arg.first.second, arg.second.first);
+        }
+    }
+    return usage;
 }
 
 bool HelpRequested(const ArgsManager& args)
@@ -943,18 +766,58 @@ void ArgsManager::ReadConfigStream(std::istream& stream)
     }
 }
 
-void ArgsManager::ReadConfigFile(const std::string& confPath)
+void ArgsManager::ReadConfigFiles()
 {
     {
         LOCK(cs_args);
         m_config_args.clear();
     }
 
+    const std::string confPath = GetArg("-conf", BITCOIN_CONF_FILENAME);
     fs::ifstream stream(GetConfigFile(confPath));
 
     // ok to not have a config file
     if (stream.good()) {
         ReadConfigStream(stream);
+        // if there is an -includeconf in the override args, but it is empty, that means the user
+        // passed '-noincludeconf' on the command line, in which case we should not include anything
+        if (m_override_args.count("-includeconf") == 0) {
+            std::vector<std::string> includeconf(GetArgs("-includeconf"));
+            {
+                // We haven't set m_network yet (that happens in SelectParams()), so manually check
+                // for network.includeconf args.
+                std::vector<std::string> includeconf_net(GetArgs(std::string("-") + GetChainName() + ".includeconf"));
+                includeconf.insert(includeconf.end(), includeconf_net.begin(), includeconf_net.end());
+            }
+
+            // Remove -includeconf from configuration, so we can warn about recursion
+            // later
+            {
+                LOCK(cs_args);
+                m_config_args.erase("-includeconf");
+                m_config_args.erase(std::string("-") + GetChainName() + ".includeconf");
+            }
+
+            for (const std::string& to_include : includeconf) {
+                fs::ifstream include_config(GetConfigFile(to_include));
+                if (include_config.good()) {
+                    ReadConfigStream(include_config);
+                    LogPrintf("Included configuration file %s\n", to_include.c_str());
+                } else {
+                    fprintf(stderr, "Failed to include configuration file %s\n", to_include.c_str());
+                }
+            }
+
+            // Warn about recursive -includeconf
+            includeconf = GetArgs("-includeconf");
+            {
+                std::vector<std::string> includeconf_net(GetArgs(std::string("-") + GetChainName() + ".includeconf"));
+                includeconf.insert(includeconf.end(), includeconf_net.begin(), includeconf_net.end());
+            }
+            for (const std::string& to_include : includeconf) {
+                fprintf(stderr, "warning: -includeconf cannot be used from included files; ignoring -includeconf=%s\n", to_include.c_str());
+            }
+        }
     }
 
     // If datadir is changed in .conf file:
@@ -1025,21 +888,37 @@ bool TryCreateDirectories(const fs::path& p)
     return false;
 }
 
-void FileCommit(FILE *file)
+bool FileCommit(FILE *file)
 {
-    fflush(file); // harmless if redundantly called
+    if (fflush(file) != 0) { // harmless if redundantly called
+        LogPrintf("%s: fflush failed: %d\n", __func__, errno);
+        return false;
+    }
 #ifdef WIN32
     HANDLE hFile = (HANDLE)_get_osfhandle(_fileno(file));
-    FlushFileBuffers(hFile);
+    if (FlushFileBuffers(hFile) == 0) {
+        LogPrintf("%s: FlushFileBuffers failed: %d\n", __func__, GetLastError());
+        return false;
+    }
 #else
     #if defined(__linux__) || defined(__NetBSD__)
-    fdatasync(fileno(file));
+    if (fdatasync(fileno(file)) != 0 && errno != EINVAL) { // Ignore EINVAL for filesystems that don't support sync
+        LogPrintf("%s: fdatasync failed: %d\n", __func__, errno);
+        return false;
+    }
     #elif defined(__APPLE__) && defined(F_FULLFSYNC)
-    fcntl(fileno(file), F_FULLFSYNC, 0);
+    if (fcntl(fileno(file), F_FULLFSYNC, 0) == -1) { // Manpage says "value other than -1" is returned on success
+        LogPrintf("%s: fcntl F_FULLFSYNC failed: %d\n", __func__, errno);
+        return false;
+    }
     #else
-    fsync(fileno(file));
+    if (fsync(fileno(file)) != 0 && errno != EINVAL) {
+        LogPrintf("%s: fsync failed: %d\n", __func__, errno);
+        return false;
+    }
     #endif
 #endif
+    return true;
 }
 
 bool TruncateFile(FILE *file, unsigned int length) {
@@ -1108,7 +987,9 @@ void AllocateFileRange(FILE *file, unsigned int offset, unsigned int length) {
     // Fallback version
     // TODO: just write one byte per block
     static const char buf[65536] = {};
-    fseek(file, offset, SEEK_SET);
+    if (fseek(file, offset, SEEK_SET)) {
+        return;
+    }
     while (length > 0) {
         unsigned int now = 65536;
         if (length < now)
@@ -1117,34 +998,6 @@ void AllocateFileRange(FILE *file, unsigned int offset, unsigned int length) {
         length -= now;
     }
 #endif
-}
-
-void ShrinkDebugFile()
-{
-    // Amount of debug.log to save at end when shrinking (must fit in memory)
-    constexpr size_t RECENT_DEBUG_HISTORY_SIZE = 10 * 1000000;
-    // Scroll debug.log if it's getting too big
-    fs::path pathLog = GetDebugLogPath();
-    FILE* file = fsbridge::fopen(pathLog, "r");
-    // If debug.log file is more than 10% bigger the RECENT_DEBUG_HISTORY_SIZE
-    // trim it down by saving only the last RECENT_DEBUG_HISTORY_SIZE bytes
-    if (file && fs::file_size(pathLog) > 11 * (RECENT_DEBUG_HISTORY_SIZE / 10))
-    {
-        // Restart the file with some of the end
-        std::vector<char> vch(RECENT_DEBUG_HISTORY_SIZE, 0);
-        fseek(file, -((long)vch.size()), SEEK_END);
-        int nBytes = fread(vch.data(), 1, vch.size(), file);
-        fclose(file);
-
-        file = fsbridge::fopen(pathLog, "w");
-        if (file)
-        {
-            fwrite(vch.data(), 1, nBytes, file);
-            fclose(file);
-        }
-    }
-    else if (file != nullptr)
-        fclose(file);
 }
 
 #ifdef WIN32

@@ -65,6 +65,15 @@ RPC changes
 - The `fundrawtransaction` RPC will reject the previously deprecated `reserveChangeKey` option.
 - `sendmany` now shuffles outputs to improve privacy, so any previously expected behavior with regards to output ordering can no longer be relied upon.
 - The new RPC `testmempoolaccept` can be used to test acceptance of a transaction to the mempool without adding it.
+- JSON transaction decomposition now includes a `weight` field which provides
+  the transaction's exact weight. This is included in REST /rest/tx/ and
+  /rest/block/ endpoints when in json mode. This is also included in `getblock`
+  (with verbosity=2), `listsinceblock`, `listtransactions`, and
+  `getrawtransaction` RPC commands.
+- New `fees` field introduced in `getrawmempool`, `getmempoolancestors`, `getmempooldescendants` and
+   `getmempoolentry` when verbosity is set to `true` with sub-fields `ancestor`, `base`, `modified`
+   and `descendant` denominated in BTC. This new field deprecates previous fee fields, such as
+   `fee`, `modifiedfee`, `ancestorfee` and `descendantfee`.
 
 External wallet files
 ---------------------
@@ -95,6 +104,21 @@ Low-level RPC changes
   now the empty string `""` instead of `"wallet.dat"`. If bitcoin is started
   with any `-wallet=<path>` options, there is no change in behavior, and the
   name of any wallet is just its `<path>` string.
+- Passing an empty string (`""`) as the `address_type` parameter to
+  `getnewaddress`, `getrawchangeaddress`, `addmultisigaddress`,
+  `fundrawtransaction` RPCs is now an error. Previously, this would fall back
+  to using the default address type. It is still possible to pass null or leave
+  the parameter unset to use the default address type.
+
+- Bare multisig outputs to our keys are no longer automatically treated as
+  incoming payments. As this feature was only available for multisig outputs for
+  which you had all private keys in your wallet, there was generally no use for
+  them compared to single-key schemes. Furthermore, no address format for such
+  outputs is defined, and wallet software can't easily send to it. These outputs
+  will no longer show up in `listtransactions`, `listunspent`, or contribute to
+  your balance, unless they are explicitly watched (using `importaddress` or
+  `importmulti` with hex script argument). `signrawtransaction*` also still
+  works for them.
 
 ### Logging
 
