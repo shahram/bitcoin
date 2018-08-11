@@ -1,4 +1,4 @@
-// Copyright (c) 2011-2017 The Bitcoin Core developers
+// Copyright (c) 2011-2018 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
@@ -97,10 +97,14 @@ static void AssembleBlock(benchmark::State& state)
         if (NUM_BLOCKS - b >= COINBASE_MATURITY)
             txs.at(b) = MakeTransactionRef(tx);
     }
-    for (const auto& txr : txs) {
-        CValidationState state;
-        bool ret{::AcceptToMemoryPool(::mempool, state, txr, nullptr /* pfMissingInputs */, nullptr /* plTxnReplaced */, false /* bypass_limits */, /* nAbsurdFee */ 0)};
-        assert(ret);
+    {
+        LOCK(::cs_main); // Required for ::AcceptToMemoryPool.
+
+        for (const auto& txr : txs) {
+            CValidationState state;
+            bool ret{::AcceptToMemoryPool(::mempool, state, txr, nullptr /* pfMissingInputs */, nullptr /* plTxnReplaced */, false /* bypass_limits */, /* nAbsurdFee */ 0)};
+            assert(ret);
+        }
     }
 
     while (state.KeepRunning()) {
