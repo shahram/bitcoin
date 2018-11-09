@@ -123,3 +123,5 @@ contrib/devtools/split-debug.sh
 
 .gitignore
 
+# Output from running db4 installation
+db4/
