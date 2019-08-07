@@ -1,18 +1,15 @@
-// Copyright (c) 2017-2018 The Bitcoin Core developers
+// Copyright (c) 2017-2019 The Bitcoin Core developers
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <key_io.h>
-#include <script/sign.h>
 #include <util/bip32.h>
 #include <util/strencodings.h>
 #include <wallet/psbtwallet.h>
-#include <wallet/rpcwallet.h>
 #include <wallet/wallet.h>
-#include <univalue.h>
 
 #include <boost/test/unit_test.hpp>
-#include <test/test_bitcoin.h>
+#include <test/setup_common.h>
 #include <wallet/test/wallet_test_fixture.h>
 
 BOOST_FIXTURE_TEST_SUITE(psbt_wallet_tests, WalletTestingSetup)
@@ -62,9 +59,8 @@ BOOST_AUTO_TEST_CASE(psbt_updater_test)
     ssData >> psbtx;
 
     // Fill transaction with our data
-    TransactionError err;
     bool complete = true;
-    FillPSBT(&m_wallet, psbtx, err, complete, SIGHASH_ALL, false, true);
+    BOOST_REQUIRE_EQUAL(TransactionError::OK, FillPSBT(&m_wallet, psbtx, complete, SIGHASH_ALL, false, true));
 
     // Get the final tx
     CDataStream ssTx(SER_NETWORK, PROTOCOL_VERSION);

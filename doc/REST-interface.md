@@ -20,7 +20,8 @@ Supported API
 
 Given a transaction hash: returns a transaction in binary, hex-encoded binary, or JSON formats.
 
-For full TX query capability, one must enable the transaction index via "txindex=1" command line / configuration option.
+By default, this endpoint will only search the mempool.
+To query for a confirmed transaction, enable the transaction index via "txindex=1" command line / configuration option.
 
 #### Blocks
 `GET /rest/block/<BLOCK-HASH>.<bin|hex|json>`
@@ -100,6 +101,7 @@ $ curl localhost:18332/rest/getutxos/checkmempool/b2cdfd7b89def827ff8af7cd9bff76
 
 Returns various information about the TX mempool.
 Only supports JSON as output format.
+* loaded : (boolean) if the mempool is fully loaded
 * size : (numeric) the number of transactions in the TX mempool
 * bytes : (numeric) size of the TX mempool in bytes
 * usage : (numeric) total TX mempool memory usage

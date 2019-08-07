@@ -7,6 +7,8 @@ clang-format-diff.py
 
 A script to format unified git diffs according to [.clang-format](../../src/.clang-format).
 
+Requires `clang-format`, installed e.g. via `brew install clang-format` on macOS.
+
 For instance, to format the last commit with 0 lines of context,
 the script should be called from the git root folder as follows.
 
@@ -142,7 +144,7 @@ Then do:
 Create and verify timestamps of merge commits
 ---------------------------------------------
 To create or verify timestamps on the merge commits, install the OpenTimestamps
-client via `pip3 install opentimestamps-client`. Then, dowload the gpg wrapper
+client via `pip3 install opentimestamps-client`. Then, download the gpg wrapper
 `ots-git-gpg-wrapper.sh` and set it as git's `gpg.program`. See
 [the ots git integration documentation](https://github.com/opentimestamps/opentimestamps-client/blob/master/doc/git-integration.md#usage)
 for further details.
@@ -167,7 +169,7 @@ still compatible with the minimum supported Linux distribution versions.
 
 Example usage after a gitian build:
 
-    find ../gitian-builder/build -type f -executable | xargs python contrib/devtools/symbol-check.py 
+    find ../gitian-builder/build -type f -executable | xargs python3 contrib/devtools/symbol-check.py
 
 If only supported symbols are used the return value will be 0 and the output will be empty.
 
