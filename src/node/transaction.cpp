@@ -16,6 +16,9 @@
 
 TransactionError BroadcastTransaction(const CTransactionRef tx, std::string& err_string, const CAmount& max_tx_fee, bool relay, bool wait_callback)
 {
+    // BroadcastTransaction can be called by either sendrawtransaction RPC or wallet RPCs.
+    // g_connman is assigned both before chain clients and before RPC server is accepting calls,
+    // and reset after chain clients and RPC sever are stopped. g_connman should never be null here.
     assert(g_connman);
     std::promise<void> promise;
     uint256 hashTx = tx->GetHash();
@@ -25,7 +28,7 @@ TransactionError BroadcastTransaction(const CTransactionRef tx, std::string& err
     LOCK(cs_main);
     // If the transaction is already confirmed in the chain, don't do anything
     // and return early.
-    CCoinsViewCache &view = *pcoinsTip;
+    CCoinsViewCache &view = ::ChainstateActive().CoinsTip();
     for (size_t o = 0; o < tx->vout.size(); o++) {
         const Coin& existingCoin = view.AccessCoin(COutPoint(hashTx, o));
         // IsSpent doesnt mean the coin is spent, it means the output doesnt' exist.

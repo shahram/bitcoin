@@ -28,11 +28,11 @@
 #include <wallet/wallet.h>
 #endif
 
-#include <QDesktopWidget>
 #include <QKeyEvent>
 #include <QMenu>
 #include <QMessageBox>
 #include <QScrollBar>
+#include <QScreen>
 #include <QSettings>
 #include <QSignalMapper>
 #include <QTime>
@@ -451,7 +451,7 @@ RPCConsole::RPCConsole(interfaces::Node& node, const PlatformStyle *_platformSty
     QSettings settings;
     if (!restoreGeometry(settings.value("RPCConsoleWindowGeometry").toByteArray())) {
         // Restore failed (perhaps missing setting), center the window
-        move(QApplication::desktop()->availableGeometry().center() - frameGeometry().center());
+        move(QGuiApplication::primaryScreen()->availableGeometry().center() - frameGeometry().center());
     }
 
     QChar nonbreaking_hyphen(8209);
@@ -558,6 +558,17 @@ bool RPCConsole::eventFilter(QObject* obj, QEvent *event)
 void RPCConsole::setClientModel(ClientModel *model)
 {
     clientModel = model;
+
+    bool wallet_enabled{false};
+#ifdef ENABLE_WALLET
+    wallet_enabled = WalletModel::isWalletEnabled();
+#endif // ENABLE_WALLET
+    if (model && !wallet_enabled) {
+        // Show warning, for example if this is a prerelease version
+        connect(model, &ClientModel::alertsChanged, this, &RPCConsole::updateAlerts);
+        updateAlerts(model->getStatusBarWarnings());
+    }
+
     ui->trafficGraph->setClientModel(model);
     if (model && clientModel->getPeerTableModel() && clientModel->getBanTableModel()) {
         // Keep up to date with client
@@ -1120,7 +1131,7 @@ void RPCConsole::updateNodeDetail(const CNodeCombinedStats *stats)
     ui->peerSubversion->setText(QString::fromStdString(stats->nodeStats.cleanSubVer));
     ui->peerDirection->setText(stats->nodeStats.fInbound ? tr("Inbound") : tr("Outbound"));
     ui->peerHeight->setText(QString("%1").arg(QString::number(stats->nodeStats.nStartingHeight)));
-    ui->peerWhitelisted->setText(stats->nodeStats.fWhitelisted ? tr("Yes") : tr("No"));
+    ui->peerWhitelisted->setText(stats->nodeStats.m_legacyWhitelisted ? tr("Yes") : tr("No"));
 
     // This check fails for example if the lock was busy and
     // nodeStateStats couldn't be fetched.
@@ -1273,4 +1284,10 @@ void RPCConsole::setTabFocus(enum TabTypes tabType)
 QString RPCConsole::tabTitle(TabTypes tab_type) const
 {
     return ui->tabWidget->tabText(tab_type);
+}
+
+void RPCConsole::updateAlerts(const QString& warnings)
+{
+    this->ui->label_alerts->setVisible(!warnings.isEmpty());
+    this->ui->label_alerts->setText(warnings);
 }

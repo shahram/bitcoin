@@ -150,11 +150,13 @@ BITCOIN_CORE_H = \
   merkleblock.h \
   miner.h \
   net.h \
+  net_permissions.h \
   net_processing.h \
   netaddress.h \
   netbase.h \
   netmessagemaker.h \
   node/coin.h \
+  node/coinstats.h \
   node/psbt.h \
   node/transaction.h \
   noui.h \
@@ -210,6 +212,7 @@ BITCOIN_CORE_H = \
   util/memory.h \
   util/moneystr.h \
   util/rbf.h \
+  util/string.h \
   util/threadnames.h \
   util/time.h \
   util/translation.h \
@@ -276,6 +279,7 @@ libbitcoin_server_a_SOURCES = \
   net.cpp \
   net_processing.cpp \
   node/coin.cpp \
+  node/coinstats.cpp \
   node/psbt.cpp \
   node/transaction.cpp \
   noui.cpp \
@@ -454,6 +458,7 @@ libbitcoin_common_a_SOURCES = \
   merkleblock.cpp \
   netaddress.cpp \
   netbase.cpp \
+  net_permissions.cpp \
   outputtype.cpp \
   policy/feerate.cpp \
   policy/policy.cpp \
@@ -499,6 +504,7 @@ libbitcoin_util_a_SOURCES = \
   util/rbf.cpp \
   util/threadnames.cpp \
   util/strencodings.cpp \
+  util/string.cpp \
   util/time.cpp \
   util/url.cpp \
   util/validation.cpp \
