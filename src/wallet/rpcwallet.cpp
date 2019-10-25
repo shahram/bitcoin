@@ -4,12 +4,10 @@
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
 #include <amount.h>
-#include <consensus/validation.h>
 #include <core_io.h>
 #include <init.h>
 #include <interfaces/chain.h>
 #include <key_io.h>
-#include <node/transaction.h>
 #include <outputtype.h>
 #include <policy/feerate.h>
 #include <policy/fees.h>
@@ -22,6 +20,7 @@
 #include <util/bip32.h>
 #include <util/fees.h>
 #include <util/moneystr.h>
+#include <util/string.h>
 #include <util/system.h>
 #include <util/url.h>
 #include <util/validation.h>
@@ -37,7 +36,6 @@
 
 #include <univalue.h>
 
-#include <functional>
 
 static const std::string WALLET_ENDPOINT_BASE = "/wallet/";
 
@@ -342,11 +340,7 @@ static CTransactionRef SendMoney(interfaces::Chain::Lock& locked_chain, CWallet 
             strError = strprintf("Error: This transaction requires a transaction fee of at least %s", FormatMoney(nFeeRequired));
         throw JSONRPCError(RPC_WALLET_ERROR, strError);
     }
-    CValidationState state;
-    if (!pwallet->CommitTransaction(tx, std::move(mapValue), {} /* orderForm */, state)) {
-        strError = strprintf("Error: The transaction was rejected! Reason given: %s", FormatStateMessage(state));
-        throw JSONRPCError(RPC_WALLET_ERROR, strError);
-    }
+    pwallet->CommitTransaction(tx, std::move(mapValue), {} /* orderForm */);
     return tx;
 }
 
@@ -927,12 +921,7 @@ static UniValue sendmany(const JSONRPCRequest& request)
     bool fCreated = pwallet->CreateTransaction(*locked_chain, vecSend, tx, nFeeRequired, nChangePosRet, strFailReason, coin_control);
     if (!fCreated)
         throw JSONRPCError(RPC_WALLET_INSUFFICIENT_FUNDS, strFailReason);
-    CValidationState state;
-    if (!pwallet->CommitTransaction(tx, std::move(mapValue), {} /* orderForm */, state)) {
-        strFailReason = strprintf("Transaction commit failed:: %s", FormatStateMessage(state));
-        throw JSONRPCError(RPC_WALLET_ERROR, strFailReason);
-    }
-
+    pwallet->CommitTransaction(tx, std::move(mapValue), {} /* orderForm */);
     return tx->GetHash().GetHex();
 }
 
@@ -2583,13 +2572,14 @@ static UniValue loadwallet(const JSONRPCRequest& request)
         }
     }
 
-    std::string error, warning;
+    std::string error;
+    std::vector<std::string> warning;
     std::shared_ptr<CWallet> const wallet = LoadWallet(*g_rpc_interfaces->chain, location, error, warning);
     if (!wallet) throw JSONRPCError(RPC_WALLET_ERROR, error);
 
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("name", wallet->GetName());
-    obj.pushKV("warning", warning);
+    obj.pushKV("warning", Join(warning, "\n"));
 
     return obj;
 }
@@ -2695,12 +2685,12 @@ static UniValue createwallet(const JSONRPCRequest& request)
     }
     SecureString passphrase;
     passphrase.reserve(100);
-    std::string warning;
+    std::vector<std::string> warnings;
     if (!request.params[3].isNull()) {
         passphrase = request.params[3].get_str().c_str();
         if (passphrase.empty()) {
             // Empty string means unencrypted
-            warning = "Empty string given as passphrase, wallet will not be encrypted.";
+            warnings.emplace_back("Empty string given as passphrase, wallet will not be encrypted.");
         }
     }
 
@@ -2709,9 +2699,8 @@ static UniValue createwallet(const JSONRPCRequest& request)
     }
 
     std::string error;
-    std::string create_warning;
     std::shared_ptr<CWallet> wallet;
-    WalletCreationStatus status = CreateWallet(*g_rpc_interfaces->chain, passphrase, flags, request.params[0].get_str(), error, create_warning, wallet);
+    WalletCreationStatus status = CreateWallet(*g_rpc_interfaces->chain, passphrase, flags, request.params[0].get_str(), error, warnings, wallet);
     switch (status) {
         case WalletCreationStatus::CREATION_FAILED:
             throw JSONRPCError(RPC_WALLET_ERROR, error);
@@ -2722,15 +2711,9 @@ static UniValue createwallet(const JSONRPCRequest& request)
         // no default case, so the compiler can warn about missing cases
     }
 
-    if (warning.empty()) {
-        warning = create_warning;
-    } else if (!warning.empty() && !create_warning.empty()){
-        warning += "; " + create_warning;
-    }
-
     UniValue obj(UniValue::VOBJ);
     obj.pushKV("name", wallet->GetName());
-    obj.pushKV("warning", warning);
+    obj.pushKV("warning", Join(warnings, "\n"));
 
     return obj;
 }
@@ -3417,7 +3400,7 @@ static UniValue bumpfee(const JSONRPCRequest& request)
         res = feebumper::CreateTotalBumpTransaction(pwallet, hash, coin_control, totalFee, errors, old_fee, new_fee, mtx);
     } else {
         // Targeting feerate bump.
-        res = feebumper::CreateRateBumpTransaction(pwallet, hash, coin_control, errors, old_fee, new_fee, mtx);
+        res = feebumper::CreateRateBumpTransaction(*pwallet, hash, coin_control, errors, old_fee, new_fee, mtx);
     }
     if (res != feebumper::Result::OK) {
         switch(res) {
@@ -3440,12 +3423,12 @@ static UniValue bumpfee(const JSONRPCRequest& request)
     }
 
     // sign bumped transaction
-    if (!feebumper::SignTransaction(pwallet, mtx)) {
+    if (!feebumper::SignTransaction(*pwallet, mtx)) {
         throw JSONRPCError(RPC_WALLET_ERROR, "Can't sign transaction.");
     }
     // commit the bumped transaction
     uint256 txid;
-    if (feebumper::CommitTransaction(pwallet, hash, std::move(mtx), errors, txid) != feebumper::Result::OK) {
+    if (feebumper::CommitTransaction(*pwallet, hash, std::move(mtx), errors, txid) != feebumper::Result::OK) {
         throw JSONRPCError(RPC_WALLET_ERROR, errors[0]);
     }
     UniValue result(UniValue::VOBJ);
